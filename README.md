@@ -1,12 +1,17 @@
 # City Score Analytics — Regional Livability Index
 
-**A 0–100 livability index that ranks neighborhoods using six social and economic factors.**
+> A 0–100 livability index that ranks 17 neighborhoods from six social and economic factors.
 
-> Author: Che-Wei Lee · MS in Data Analytics Engineering, Northeastern University
+`Python` · `pandas` · `GeoPandas` · `Plotly` · composite indexing · geospatial
 
-This project builds a composite **livability index** for 17 ZIP-code areas by combining six normalized social and economic indicators into a single 0–100 score. It integrates 16,000+ records on crime, income, education, housing, employment, and population density, then ranks and maps the results to reveal where livability is highest — and where the gaps are.
+**Che-Wei Lee** — M.S. in Data Analytics Engineering, Northeastern University
 
-**Headline:** scores ranged from **16.6 to 83.2**, with ZIP **22125 (83.2)** at the top, followed by **20169 (77.2)** and **20136 (71.7)** — clear, defensible separation between the most and least livable areas.
+## Highlights
+
+- Scored **17 ZIP-code areas** using **16,000+ records** on crime, income, education, housing, jobs, and population density.
+- Built a **weighted 0–100 composite score** from six normalized indicators — results ranged **16.6 to 83.2**.
+- **Top areas:** ZIP 22125 (83.2), 20169 (77.2), 20136 (71.7) — clear, defensible separation between the most and least livable.
+- Mapped the rankings with **interactive choropleths** to expose livability gaps across the region.
 
 ---
 
