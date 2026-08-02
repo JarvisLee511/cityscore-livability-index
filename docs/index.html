@@ -1,0 +1,820 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>CityScore — a livability index for Prince William County, and how much of it is real</title>
+<meta name="description" content="Seventeen ZIP areas scored from six indicators. Move the weights and watch the ranking come apart.">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Public+Sans:wght@400;500;700&display=swap" rel="stylesheet">
+<style>
+/* pre-emit critique: P5 H5 E4 S5 R5 V5
+   Hallmark · macrostructure: Map / Diagram · style recipe: vignelli-swiss-helvetica
+   Prior in this portfolio: Bento Grid, Ecosystem Index, Long Document,
+   Narrative Workflow, Split Studio — none reused.
+   Public Sans stands in for Helvetica: it is the US Web Design System grotesque,
+   which is the right register for a county civic dataset, and it is a real
+   webfont rather than a system fallback.
+
+   Slop test: 57 gates run, one deliberate exception recorded.
+   Gate 23 (accent over ~5% of a viewport) is not met on the first screen: the
+   choropleth's fill IS the data encoding, so retreating the accent would mean
+   the map could no longer carry the score. The gate's stated concern is
+   decorative accent flooding; a ramp driven by a measured value is not that.
+   Everything the accent touches outside the map is emphasis only. */
+
+:root {
+  /* Vignelli's palette is black, white and one accent. Every neutral here is
+     pulled a fraction of a percent toward the accent hue rather than sitting at
+     pure #000 / #fff / zero chroma — perceptually identical, and it keeps the
+     page off the two flattest values on the wheel. */
+  --ink: #050609;
+  --ground: #FDFDFE;
+  --accent: #0033A0;          /* the single accent. Never a second one. */
+  --rule: #888A90;            /* hairlines only — never text */
+  --quiet: #5D5F66;           /* secondary text — 5.0:1 on ground */
+  --band: #EFF0F3;            /* the one non-white ground, for tabular zebra */
+  --hairline: #E3E4E8;        /* table row separators */
+  --on-ink: #C7C9CF;          /* secondary text on the ink bands */
+  --plate: #FDFDFE;           /* knockout plate behind map labels */
+  --chart-grid: #E9EAEE;
+  --chart-rule: #D6D8DE;
+  --chart-soft: #B9C4DF;      /* the accent at low strength, for range bars */
+
+  --font: "Public Sans", "Helvetica Neue", Helvetica, Arial, sans-serif;
+
+  /* 8px baseline grid, and the 72/48/32/24/16/12 Vignelli scale */
+  --u: 8px;
+  --t-72: clamp(2.5rem, 6.2vw, 4.5rem);
+  --t-48: clamp(1.9rem, 4vw, 3rem);
+  --t-32: clamp(1.4rem, 2.6vw, 2rem);
+  --t-24: 1.5rem;
+  --t-16: 1rem;
+  --t-13: 0.8125rem;
+  --t-12: 0.75rem;
+
+  --shell: 1360px;
+  --gutter: clamp(1rem, 4vw, 3rem);
+}
+
+*, *::before, *::after { box-sizing: border-box; }
+html, body { overflow-x: clip; }
+html { -webkit-text-size-adjust: 100%; }
+
+body {
+  margin: 0;
+  background: var(--ground);
+  color: var(--ink);
+  font-family: var(--font);
+  font-size: var(--t-16);
+  line-height: 1.5;
+  font-weight: 400;
+}
+
+h1, h2, h3 { font-weight: 700; margin: 0; line-height: 1.08;
+             overflow-wrap: anywhere; min-width: 0; }
+p { margin: 0; }
+a { color: var(--accent); text-underline-offset: 3px; }
+a:focus-visible, button:focus-visible, input:focus-visible {
+  outline: 3px solid var(--accent); outline-offset: 3px;
+}
+
+.shell { max-width: var(--shell); margin-inline: auto; padding-inline: var(--gutter); }
+.measure { max-width: 64ch; }
+
+/* ---------------------------------------------------------------- masthead */
+.masthead { background: var(--ink); color: var(--ground); padding-block: calc(var(--u) * 3); }
+.masthead__row { display: flex; flex-wrap: wrap; gap: var(--u) calc(var(--u) * 3);
+                 align-items: baseline; justify-content: space-between; }
+.masthead__mark { font-size: var(--t-24); font-weight: 700; letter-spacing: .14em; }
+.masthead__meta { font-size: var(--t-12); letter-spacing: .16em; text-transform: uppercase;
+                  color: var(--on-ink); }
+
+/* --------------------------------------------------------------- orientation */
+.orient { padding-block: calc(var(--u) * 5) calc(var(--u) * 7); }
+.orient__line { font-size: var(--t-48); font-weight: 700; max-width: 20ch; }
+.orient__line em { font-style: normal; color: var(--accent); }
+.orient__sub { margin-top: calc(var(--u) * 3); font-size: var(--t-16); color: var(--quiet);
+               max-width: 62ch; }
+
+/* ------------------------------------------------------------ the instrument */
+.instrument { display: grid; gap: calc(var(--u) * 4);
+              grid-template-columns: minmax(0, 1fr); padding-bottom: calc(var(--u) * 8); }
+@media (min-width: 62rem) {
+  .instrument { grid-template-columns: minmax(0, 1.15fr) minmax(0, 1fr);
+                align-items: start; }
+}
+
+.panel__head { border-bottom: 2px solid var(--ink); padding-bottom: var(--u); }
+.panel__head h2 { font-size: var(--t-13); letter-spacing: .16em; text-transform: uppercase; }
+.panel__note { font-size: var(--t-12); color: var(--quiet); padding-top: var(--u);
+               margin-bottom: calc(var(--u) * 2); display: block; }
+
+#map { width: 100%; height: auto; display: block; }
+/* Font size is set in user units by fitAll(), so it lands at a constant CSS px
+   whatever width the SVG is scaled to. */
+.map__zip { font-weight: 700; pointer-events: none; }
+.map__area { stroke: var(--ground); stroke-width: 1.1; cursor: pointer; }
+.map__area:hover { stroke: var(--ink); stroke-width: 2.2; }
+.map__area.is-sel { stroke: var(--ink); stroke-width: 2.8; }
+
+.legend { display: flex; align-items: center; gap: var(--u); margin-top: calc(var(--u) * 2);
+          font-size: var(--t-12); color: var(--quiet); flex-wrap: wrap; }
+.legend__ramp { display: flex; height: 12px; flex: 1 1 140px; min-width: 120px; }
+.legend__ramp i { flex: 1; }
+.legend__flag { display: inline-flex; align-items: center; gap: 6px; }
+.legend__flag b { width: 24px; height: 12px; display: inline-block;
+                  background-image: repeating-linear-gradient(45deg,
+                    var(--ink) 0 2px, transparent 2px 5px);
+                  border: 1px solid var(--ink); }
+
+/* ---- weight controls ---- */
+.weights { display: grid; gap: calc(var(--u) * 2); }
+.w { display: grid; grid-template-columns: 1fr auto; gap: 4px var(--u); align-items: center; }
+.w__label { font-size: var(--t-13); font-weight: 500; }
+.w__val { font-size: var(--t-13); font-weight: 700; font-variant-numeric: tabular-nums;
+          color: var(--accent); }
+.w input[type=range] { grid-column: 1 / -1; width: 100%; margin: 0; accent-color: var(--accent);
+                       height: 24px; }
+
+.readout { margin-top: calc(var(--u) * 3); border-top: 2px solid var(--ink);
+           padding-top: calc(var(--u) * 2); font-size: var(--t-13); }
+.readout strong { font-size: var(--t-32); display: block; line-height: 1; }
+.controls { display: flex; gap: var(--u); flex-wrap: wrap; margin-top: calc(var(--u) * 2); }
+.btn { font: inherit; font-size: var(--t-12); letter-spacing: .1em; text-transform: uppercase;
+       font-weight: 700; padding: calc(var(--u) * 1.25) calc(var(--u) * 2);
+       background: var(--ground); color: var(--ink); border: 2px solid var(--ink);
+       border-radius: 0; cursor: pointer; }
+.btn { white-space: nowrap; }
+.btn:hover { background: var(--ink); color: var(--ground); }
+.btn:active { background: var(--accent); border-color: var(--accent); color: var(--ground); }
+.btn:disabled { border-color: var(--rule); color: var(--rule); cursor: not-allowed;
+                background: var(--ground); }
+.btn[aria-pressed="true"] { background: var(--accent); border-color: var(--accent);
+                            color: var(--ground); }
+
+/* ---- ranking table ---- */
+.rank { width: 100%; border-collapse: collapse; margin-top: calc(var(--u) * 3);
+        font-variant-numeric: tabular-nums; }
+.rank caption { text-align: left; font-size: var(--t-12); letter-spacing: .16em;
+                text-transform: uppercase; font-weight: 700; padding-bottom: var(--u);
+                border-bottom: 2px solid var(--ink); }
+.rank th { text-align: right; font-size: var(--t-12); color: var(--quiet); font-weight: 500;
+           padding: var(--u) 0 var(--u) var(--u); border-bottom: 1px solid var(--rule); }
+.rank th:first-child, .rank th:nth-child(2) { text-align: left; padding-left: 0; }
+.rank td { padding: 8px 0 8px var(--u); border-bottom: 1px solid var(--hairline); text-align: right;
+           font-size: var(--t-13); }
+.rank td:first-child { text-align: left; padding-left: 0; font-weight: 700; width: 2.4em; }
+.rank td:nth-child(2) { text-align: left; }
+.rank tbody tr:hover td { background: var(--band); }
+.rank__zip { font-weight: 700; }
+.rank__name { color: var(--quiet); font-size: var(--t-12); display: block; }
+.rank__move { font-weight: 700; font-size: var(--t-12); }
+.rank__flagmark { color: var(--ink); font-weight: 700; }
+
+/* ------------------------------------------------------------------- bands */
+.band { border-top: 2px solid var(--ink); padding-block: calc(var(--u) * 7); }
+.band__bar { background: var(--ink); color: var(--ground);
+             padding: calc(var(--u) * 1.5) 0; margin-bottom: calc(var(--u) * 5); }
+.band__bar h2 { font-size: var(--t-16); letter-spacing: .14em; text-transform: uppercase;
+                line-height: 1.05; display: flex; align-items: baseline;
+                gap: calc(var(--u) * 2); flex-wrap: wrap; }
+.band__num { font-size: var(--t-32); font-weight: 700; line-height: 1; }
+.band--accent .band__bar { background: var(--accent); }
+
+.split { display: grid; gap: calc(var(--u) * 4); grid-template-columns: minmax(0, 1fr); }
+@media (min-width: 54rem) { .split { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); } }
+.split--wide { grid-template-columns: minmax(0, 1fr); }
+@media (min-width: 54rem) { .split--wide { grid-template-columns: minmax(0, 1.4fr) minmax(0, 1fr); } }
+
+.lede { font-size: var(--t-24); font-weight: 500; line-height: 1.32; max-width: 34ch;
+        overflow-wrap: anywhere; min-width: 0; }
+.body { margin-top: calc(var(--u) * 2); color: var(--quiet); }
+.body p + p { margin-top: calc(var(--u) * 2); }
+.body strong { color: var(--ink); }
+
+.claims { list-style: none; margin: 0; padding: 0; }
+.claims li { border-top: 1px solid var(--rule); padding-block: calc(var(--u) * 2);
+             display: grid; grid-template-columns: auto minmax(0, 1fr); gap: calc(var(--u) * 2); }
+.claims li:last-child { border-bottom: 1px solid var(--rule); }
+.claims b { font-size: var(--t-32); font-weight: 700; line-height: 1; color: var(--accent);
+            font-variant-numeric: tabular-nums; }
+.claims span { align-self: center; }
+
+.facts { width: 100%; border-collapse: collapse; font-variant-numeric: tabular-nums; }
+.facts th { text-align: left; font-size: var(--t-12); letter-spacing: .12em;
+            text-transform: uppercase; color: var(--quiet); font-weight: 500;
+            padding: var(--u) var(--u) var(--u) 0; border-bottom: 1px solid var(--rule);
+            vertical-align: top; }
+.facts td { padding: var(--u) 0; border-bottom: 1px solid var(--hairline); font-size: var(--t-13); }
+.facts tr:nth-child(even) td, .facts tr:nth-child(even) th { background: var(--band); }
+
+figure { margin: 0; }
+figcaption { font-size: var(--t-12); color: var(--quiet); margin-top: var(--u); max-width: 52ch; }
+.chart { width: 100%; height: auto; display: block; }
+
+.note { border-left: 4px solid var(--accent); padding-left: calc(var(--u) * 2);
+        margin-top: calc(var(--u) * 3); font-size: var(--t-13); color: var(--quiet);
+        max-width: 60ch; }
+
+/* ------------------------------------------------------------------ footer */
+.foot { background: var(--ink); color: var(--ground); padding-block: calc(var(--u) * 6);
+        font-size: var(--t-13); }
+.foot a { color: var(--ground); }
+.foot__grid { display: grid; gap: calc(var(--u) * 3); grid-template-columns: minmax(0, 1fr); }
+@media (min-width: 44rem) { .foot__grid { grid-template-columns: repeat(3, minmax(0, 1fr)); } }
+.foot h3 { font-size: var(--t-12); letter-spacing: .16em; text-transform: uppercase;
+           color: var(--on-ink); margin-bottom: var(--u); font-weight: 500; }
+
+@media (prefers-reduced-motion: no-preference) {
+  .map__area { transition: fill 120ms linear; }
+}
+</style>
+</head>
+<body>
+
+<header class="masthead">
+  <div class="shell masthead__row">
+    <span class="masthead__mark">CITYSCORE</span>
+    <span class="masthead__meta">Prince William County · Virginia · 17 ZIP areas</span>
+  </div>
+</header>
+
+<main>
+  <section class="shell orient">
+    <h1 class="orient__line">Six indicators. One weighting — and <em>it decides the answer.</em></h1>
+    <p class="orient__sub">
+      A 0–100 livability score for seventeen ZIP areas, built the way composite indices
+      are usually built: normalise six things, weight them, add them up, rank. The map
+      below is that index. The sliders beside it are the weights. Move them.
+    </p>
+  </section>
+
+  <section class="shell instrument" aria-label="Interactive index">
+    <div>
+      <div class="panel__head"><h2>The index, as weighted</h2></div>
+      <span class="panel__note" id="mapNote">darker = scores higher</span>
+      <svg id="map" viewBox="0 0 640 720" role="img"
+           aria-label="Choropleth of 17 ZIP areas in Prince William County, shaded by composite score"></svg>
+      <div class="legend">
+        <span>0</span>
+        <span class="legend__ramp" id="ramp" aria-hidden="true"></span>
+        <span>100</span>
+        <span class="legend__flag"><b aria-hidden="true"></b> crime figure not comparable</span>
+      </div>
+    </div>
+
+    <div>
+      <div class="panel__head"><h2>Weights</h2></div>
+      <span class="panel__note" id="wsum">rescaled to sum to 100%</span>
+      <div class="weights" id="weights"></div>
+
+      <div class="readout">
+        <strong id="moved">—</strong>
+        <span id="movedLabel">areas change rank when you move the weights away from the project's own choice.</span>
+        <div class="controls">
+          <button class="btn" id="reset" type="button">Project weights</button>
+          <button class="btn" id="equal" type="button">Equal weights</button>
+          <button class="btn" id="crimeOnly" type="button">Crime only</button>
+        </div>
+      </div>
+
+      <table class="rank" id="rankTable">
+        <caption>Ranking under your weighting</caption>
+        <thead>
+          <tr><th scope="col">#</th><th scope="col">ZIP area</th>
+              <th scope="col">Score</th><th scope="col">Move</th></tr>
+        </thead>
+        <tbody></tbody>
+      </table>
+    </div>
+  </section>
+
+  <section class="band">
+    <div class="band__bar"><div class="shell"><h2><span class="band__num">01</span> What the sliders are showing</h2></div></div>
+    <div class="shell split split--wide">
+      <figure>
+        <svg id="rangeChart" class="chart" viewBox="0 0 660 420" role="img"
+             aria-label="Rank range for each ZIP area across 10,000 random weightings"></svg>
+        <figcaption>
+          Each bar is the 5th-to-95th percentile of an area's rank across 10,000 weightings
+          drawn uniformly over the simplex — every possible way of splitting 100% across the
+          six indicators. The square marks its rank under the project's own weights.
+        </figcaption>
+      </figure>
+      <div>
+        <p class="lede">Moving a slider is not a what-if. It is the whole finding.</p>
+        <div class="body">
+          <p>Across all 10,000 weightings the median area moves <strong>8 places out of
+          17</strong>. Only <strong>2 of the 17</strong> hold their position within three
+          places no matter how the index is weighted.</p>
+          <p>Change nothing but the <em>direction</em> of the two arguable indicators —
+          whether expensive housing is good or bad, whether density is good or bad — and
+          ranks shift by up to <strong>5 places</strong> on their own.</p>
+          <p>So a ranked table of seventeen numbers promises a precision this data does not
+          have. What survives is narrower, and it is in band 03.</p>
+        </div>
+        <p class="note">
+          The instrument above is honest about its own limits: normalisation is min–max on
+          n&nbsp;=&nbsp;17, so the best and worst area are pinned to exactly 1.0 and 0.0 on
+          every indicator by construction. Some of the spread is the scaling, not the county.
+        </p>
+      </div>
+    </div>
+  </section>
+
+  <section class="band band--accent">
+    <div class="band__bar"><div class="shell"><h2><span class="band__num">02</span> The crime input had to be rebuilt</h2></div></div>
+    <div class="shell split">
+      <div>
+        <p class="lede">A 16,000-row export from a service that returns at most 16,000 rows.</p>
+        <div class="body">
+          <p>Crime carries the largest weight in the composite, so it got checked first. The
+          original file had <strong>exactly 16,000 rows</strong>. The county's ArcGIS feature
+          service declares <strong>maxRecordCount: 16000</strong>. And that service reports
+          <strong>23,914 incidents</strong> inside the same date window the export covers.</p>
+          <p>The export held about two thirds of its own window and stopped where the API
+          stopped, not where the data did. Nothing suggests the missing third is spread evenly
+          across ZIP codes, so a rate computed from it is not a rate.</p>
+          <p>The rebuild pages past the cap: all <strong>25,829</strong> incidents reported in
+          calendar 2025, each assigned to a ZIP area by point-in-polygon against Census
+          boundaries. Against the original column it lands at Spearman
+          <strong>+0.115</strong> — close to unrelated.</p>
+        </div>
+      </div>
+      <figure>
+        <svg id="crimeChart" class="chart" viewBox="0 0 520 460" role="img"
+             aria-label="Scatter of derived crime rate against the original crime rate, showing little agreement"></svg>
+        <figcaption>
+          Hatched markers are the three areas the county police department does not cover:
+          20110 is the independent City of Manassas, 22134 is MCB Quantico, 20111 partly
+          overlaps Manassas Park. A low count there measures who files the paperwork.
+        </figcaption>
+      </figure>
+    </div>
+  </section>
+
+  <section class="band">
+    <div class="band__bar"><div class="shell"><h2><span class="band__num">03</span> What survives</h2></div></div>
+    <div class="shell split">
+      <div>
+        <p class="lede">Three claims the data actually carries.</p>
+        <ul class="claims">
+          <li><b>99.9%</b><span>of all possible weightings put <strong>Occoquan (22125)</strong>
+            in the top five.</span></li>
+          <li><b>&gt;90%</b><span>of them put <strong>Manassas/Sudley (20109)</strong> and
+            <strong>Triangle (22172)</strong> in the bottom five.</span></li>
+          <li><b>—</b><span>Everything between those two ends is a restatement of the weights
+            that produced it.</span></li>
+        </ul>
+        <p class="note">
+          Two areas are also too small to rate: Occoquan has 917 residents and Catharpin 1,124,
+          so their crime rates rest on a few dozen incidents and their Poisson intervals span
+          most of the table.
+        </p>
+      </div>
+      <div>
+        <p class="lede">And the choices that produced them.</p>
+        <table class="facts">
+          <tbody>
+            <tr><th scope="row">Indicators</th><td>Crime, median income, bachelor's degree or
+              higher, median house price, unemployment, population density</td></tr>
+            <tr><th scope="row">Normalisation</th><td>Min–max to 0–1 across 17 areas</td></tr>
+            <tr><th scope="row">Housing direction</th><td>Cheaper scores higher — treated as
+              affordability. The original code did the opposite while its own chart was
+              labelled "Higher = Cheaper"</td></tr>
+            <tr><th scope="row">Density direction</th><td>Denser scores higher — closer to jobs
+              in a commuter county. The opposite reading is equally defensible</td></tr>
+            <tr><th scope="row">Crime window</th><td>Calendar 2025, 25,829 incidents, one
+              police department</td></tr>
+            <tr><th scope="row">Excluded everywhere</th><td>Sexual offences, withheld by the
+              publisher for victim privacy</td></tr>
+            <tr><th scope="row">Boundaries</th><td>Census ZCTA — the Postal Service publishes
+              none, so these are ZIP <em>areas</em></td></tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </section>
+</main>
+
+<footer class="foot">
+  <div class="shell foot__grid">
+    <div>
+      <h3>Built by</h3>
+      <p>Che-Wei Lee<br>M.S. Data Analytics Engineering, Northeastern University</p>
+    </div>
+    <div>
+      <h3>Sources</h3>
+      <p><a href="https://experience.arcgis.com/experience/cdb0743527c448b2a2ea18124e670779">Prince
+        William County — Public Crime Data</a><br>
+        <a href="https://www2.census.gov/geo/tiger/GENZ2020/shp/">U.S. Census Bureau — 2020 ZCTA
+        cartographic boundaries</a></p>
+    </div>
+    <div>
+      <h3>Method</h3>
+      <p>Every figure on this page is generated by the notebook and the build script in the
+        repository. Nothing here is typed in by hand.</p>
+    </div>
+  </div>
+</footer>
+
+<script id="payload" type="application/json">{"areas":[{"zip":"20169","name":"Haymarket","s":[0.9233,1.0,0.9792,0.4408,0.7629,0.2995],"base":82.3,"baseRank":1,"rMed":2.0,"r5":1.0,"r95":8.0,"top5":0.894,"pop":28182,"inc":601,"cr":21.3,"crOrig":23.0,"flag":false},{"zip":"22125","name":"Occoquan","s":[0.7841,0.754,1.0,0.6845,0.8866,0.743],"base":81.7,"baseRank":2,"rMed":1.0,"r5":1.0,"r95":3.0,"top5":0.9993,"pop":917,"inc":30,"cr":32.7,"crOrig":8.7,"flag":false},{"zip":"20136","name":"Bristow","s":[0.9756,0.8449,0.753,0.5568,0.6082,0.3088],"base":76.0,"baseRank":3,"rMed":4.0,"r5":2.0,"r95":8.0,"top5":0.8056,"pop":31622,"inc":539,"cr":17.0,"crOrig":13.6,"flag":false},{"zip":"20112","name":"Manassas / Hoadly","s":[0.8321,0.9447,0.6726,0.5183,0.6598,0.1631],"base":70.7,"baseRank":4,"rMed":5.0,"r5":3.0,"r95":13.0,"top5":0.5144,"pop":29459,"inc":848,"cr":28.8,"crOrig":17.3,"flag":false},{"zip":"20155","name":"Gainesville","s":[0.7741,0.6641,0.75,0.4996,0.701,0.3608],"base":67.1,"baseRank":5,"rMed":6.0,"r5":4.0,"r95":11.0,"top5":0.4607,"pop":37218,"inc":1248,"cr":33.5,"crOrig":22.0,"flag":false},{"zip":"20110","name":"Manassas","s":[1.0,0.4022,0.0982,0.7354,0.6907,0.6837],"base":61.1,"baseRank":6,"rMed":6.0,"r5":2.0,"r95":11.0,"top5":0.4558,"pop":49120,"inc":739,"cr":15.0,"crOrig":52.7,"flag":true},{"zip":"20181","name":"Nokesville","s":[0.8235,0.729,0.4435,0.4474,0.7423,0.0157],"base":60.2,"baseRank":7,"rMed":9.0,"r5":6.0,"r95":15.0,"top5":0.0123,"pop":9765,"inc":288,"cr":29.5,"crOrig":7.7,"flag":false},{"zip":"20143","name":"Catharpin","s":[0.836,0.8451,0.2768,0.0,1.0,0.0],"base":57.5,"baseRank":8,"rMed":11.0,"r5":3.0,"r95":17.0,"top5":0.146,"pop":1124,"inc":32,"cr":28.5,"crOrig":22.2,"flag":false},{"zip":"22025","name":"Dumfries / Montclair","s":[0.5508,0.5216,0.753,0.6686,0.4948,0.3517],"base":57.2,"baseRank":9,"rMed":9.0,"r5":5.0,"r95":13.0,"top5":0.0561,"pop":18470,"inc":957,"cr":51.8,"crOrig":22.1,"flag":false},{"zip":"22134","name":"Quantico","s":[0.6723,0.0,0.6994,1.0,0.4948,0.3246],"base":52.4,"baseRank":10,"rMed":10.0,"r5":2.0,"r95":16.0,"top5":0.1867,"pop":7357,"inc":308,"cr":41.9,"crOrig":6.1,"flag":true},{"zip":"20111","name":"Manassas","s":[0.9189,0.3208,0.0,0.7301,0.567,0.5329],"base":52.3,"baseRank":11,"rMed":11.0,"r5":5.0,"r95":16.0,"top5":0.1041,"pop":38883,"inc":843,"cr":21.7,"crOrig":45.5,"flag":true},{"zip":"22193","name":"Woodbridge / Dale City","s":[0.7017,0.3936,0.1399,0.7584,0.5567,0.6905],"base":51.8,"baseRank":12,"rMed":10.0,"r5":4.0,"r95":13.0,"top5":0.1609,"pop":83064,"inc":3278,"cr":39.5,"crOrig":27.3,"flag":false},{"zip":"22026","name":"Dumfries / Southbridge","s":[0.5822,0.3571,0.2411,0.7468,0.4433,0.4782],"base":46.1,"baseRank":13,"rMed":13.0,"r5":9.0,"r95":15.0,"top5":0.0001,"pop":20225,"inc":996,"cr":49.2,"crOrig":22.7,"flag":false},{"zip":"22191","name":"Woodbridge / Leesylvania","s":[0.427,0.3071,0.253,0.7515,0.3711,1.0],"base":45.2,"baseRank":14,"rMed":11.0,"r5":2.0,"r95":15.0,"top5":0.1989,"pop":74189,"inc":4596,"cr":61.9,"crOrig":29.7,"flag":false},{"zip":"22172","name":"Triangle","s":[0.7022,0.3458,0.3333,0.6535,0.0,0.1939],"base":43.1,"baseRank":15,"rMed":15.0,"r5":12.0,"r95":17.0,"top5":0.0,"pop":10679,"inc":421,"cr":39.4,"crOrig":8.9,"flag":false},{"zip":"22192","name":"Woodbridge / Lake Ridge","s":[0.0,0.4146,0.5714,0.7096,0.5155,0.4766],"base":36.7,"baseRank":16,"rMed":13.0,"r5":8.0,"r95":16.0,"top5":0.0048,"pop":60299,"inc":5843,"cr":96.9,"crOrig":23.2,"flag":false},{"zip":"20109","name":"Manassas / Sudley","s":[0.0128,0.1611,0.1458,0.7781,0.5773,0.2495],"base":22.6,"baseRank":17,"rMed":17.0,"r5":14.0,"r95":17.0,"top5":0.0003,"pop":43849,"inc":4203,"cr":95.9,"crOrig":65.0,"flag":false}],"shapes":{"20109":[[[-77.5979,38.7998],[-77.5733,38.8062],[-77.5724,38.8208],[-77.5617,38.8219],[-77.5686,38.8284],[-77.5672,38.8335],[-77.5637,38.8341],[-77.5624,38.8372],[-77.5527,38.8354],[-77.5506,38.8386],[-77.5449,38.8398],[-77.545,38.8436],[-77.548,38.845],[-77.5452,38.845],[-77.5461,38.8492],[-77.5441,38.8503],[-77.535,38.8468],[-77.537,38.8428],[-77.5361,38.8407],[-77.5296,38.837],[-77.5236,38.8369],[-77.5088,38.8411],[-77.5076,38.8375],[-77.5105,38.8365],[-77.5124,38.8304],[-77.5039,38.8256],[-77.5064,38.8203],[-77.5052,38.8164],[-77.4912,38.8114],[-77.4892,38.8085],[-77.4944,38.7989],[-77.4804,38.7966],[-77.4797,38.799],[-77.4765,38.7993],[-77.4744,38.7966],[-77.4691,38.7959],[-77.4834,38.7847],[-77.4822,38.7842],[-77.4848,38.7808],[-77.4869,38.7819],[-77.5116,38.7488],[-77.5198,38.7542],[-77.5282,38.7546],[-77.519,38.7421],[-77.5345,38.7372],[-77.542,38.7459],[-77.5454,38.7446],[-77.5478,38.7482],[-77.5542,38.75],[-77.5498,38.7504],[-77.5472,38.7535],[-77.5468,38.7602],[-77.5483,38.762],[-77.5505,38.7602],[-77.554,38.7627],[-77.5527,38.7668],[-77.5602,38.7674],[-77.5553,38.7731],[-77.5606,38.7768],[-77.5659,38.7779],[-77.5663,38.7832],[-77.5699,38.7828],[-77.5651,38.7914],[-77.5979,38.7998]]],"20110":[[[-77.5338,38.7374],[-77.519,38.7421],[-77.5282,38.7546],[-77.5198,38.7542],[-77.5116,38.7488],[-77.4869,38.7819],[-77.4848,38.7808],[-77.4822,38.7842],[-77.4787,38.7812],[-77.4785,38.7783],[-77.4746,38.7812],[-77.4485,38.7662],[-77.4513,38.7629],[-77.4478,38.7609],[-77.4516,38.7383],[-77.4536,38.7385],[-77.4536,38.7355],[-77.4609,38.7229],[-77.4647,38.7269],[-77.4705,38.7262],[-77.4803,38.7307],[-77.4814,38.7285],[-77.4868,38.7276],[-77.4916,38.7241],[-77.482,38.7201],[-77.4825,38.718],[-77.4964,38.7235],[-77.5029,38.7182],[-77.5025,38.7128],[-77.5062,38.7061],[-77.5133,38.7162],[-77.5172,38.7154],[-77.5239,38.7176],[-77.5215,38.723],[-77.5248,38.7243],[-77.5261,38.7296],[-77.5313,38.7265],[-77.5311,38.7325],[-77.5338,38.7374]]],"20111":[[[-77.4834,38.7847],[-77.4691,38.7959],[-77.4624,38.7955],[-77.4589,38.7977],[-77.4566,38.7959],[-77.4523,38.7963],[-77.4506,38.8022],[-77.4431,38.8037],[-77.433,38.7869],[-77.4333,38.78],[-77.43,38.7812],[-77.4126,38.7717],[-77.4158,38.7676],[-77.4128,38.7653],[-77.4128,38.7627],[-77.4172,38.7613],[-77.4159,38.7582],[-77.4067,38.754],[-77.4118,38.745],[-77.4045,38.7458],[-77.404,38.7517],[-77.4014,38.7522],[-77.3975,38.7492],[-77.3881,38.7487],[-77.3897,38.743],[-77.3781,38.7342],[-77.3774,38.7296],[-77.3805,38.7225],[-77.3844,38.7214],[-77.3873,38.7246],[-77.3862,38.7284],[-77.3876,38.7312],[-77.3913,38.731],[-77.3949,38.7267],[-77.3959,38.7211],[-77.3936,38.718],[-77.3948,38.7148],[-77.3995,38.7139],[-77.4006,38.7199],[-77.4029,38.7216],[-77.409,38.7147],[-77.4105,38.7083],[-77.4151,38.7126],[-77.4197,38.7126],[-77.4154,38.7056],[-77.4231,38.7039],[-77.4313,38.7057],[-77.4334,38.7024],[-77.437,38.7051],[-77.4462,38.7055],[-77.4496,38.7094],[-77.4484,38.7157],[-77.4502,38.7184],[-77.4547,38.7172],[-77.4578,38.7204],[-77.4535,38.7247],[-77.4475,38.725],[-77.4505,38.7321],[-77.4571,38.731],[-77.4536,38.7355],[-77.4536,38.7385],[-77.4516,38.7383],[-77.4478,38.7609],[-77.4513,38.7629],[-77.4485,38.7662],[-77.4746,38.7812],[-77.4785,38.7783],[-77.4787,38.7812],[-77.4834,38.7847]]],"20112":[[[-77.5077,38.7034],[-77.5025,38.7128],[-77.5029,38.7182],[-77.4964,38.7235],[-77.4825,38.718],[-77.482,38.7201],[-77.4916,38.7241],[-77.4868,38.7276],[-77.4814,38.7285],[-77.4803,38.7307],[-77.4705,38.7262],[-77.4647,38.7269],[-77.4609,38.7229],[-77.4571,38.731],[-77.4505,38.7321],[-77.4475,38.725],[-77.4535,38.7247],[-77.4578,38.7204],[-77.4547,38.7172],[-77.4502,38.7184],[-77.4484,38.7157],[-77.4496,38.7094],[-77.4462,38.7055],[-77.437,38.7051],[-77.4334,38.7024],[-77.4313,38.7057],[-77.4231,38.7039],[-77.4154,38.7056],[-77.4197,38.7126],[-77.4151,38.7126],[-77.4105,38.7083],[-77.409,38.7147],[-77.4038,38.7214],[-77.4006,38.7199],[-77.3995,38.7139],[-77.3948,38.7148],[-77.3936,38.718],[-77.3959,38.7211],[-77.3949,38.7267],[-77.3913,38.731],[-77.3876,38.7312],[-77.3864,38.7231],[-77.3844,38.7214],[-77.3805,38.7225],[-77.3791,38.7179],[-77.3721,38.711],[-77.3699,38.7102],[-77.3671,38.7141],[-77.3635,38.7154],[-77.3623,38.7147],[-77.3616,38.7117],[-77.3628,38.7147],[-77.3687,38.7098],[-77.3743,38.7117],[-77.3787,38.7065],[-77.3786,38.6995],[-77.38,38.701],[-77.3876,38.6983],[-77.3821,38.693],[-77.3769,38.6928],[-77.3767,38.6865],[-77.3604,38.6805],[-77.3713,38.6752],[-77.3704,38.6718],[-77.3838,38.6679],[-77.3833,38.6744],[-77.3951,38.6724],[-77.4026,38.669],[-77.3999,38.6649],[-77.3943,38.6655],[-77.3927,38.6614],[-77.398,38.6597],[-77.3961,38.6564],[-77.391,38.6567],[-77.389,38.6529],[-77.3879,38.654],[-77.3891,38.6511],[-77.3865,38.6491],[-77.3846,38.646],[-77.389,38.651],[-77.3937,38.6471],[-77.4008,38.6471],[-77.401,38.6454],[-77.3959,38.6446],[-77.4036,38.6398],[-77.3991,38.6366],[-77.3944,38.6287],[-77.3864,38.6247],[-77.3858,38.622],[-77.3783,38.617],[-77.3725,38.6177],[-77.371,38.6117],[-77.3814,38.6126],[-77.3847,38.6109],[-77.3987,38.6205],[-77.4006,38.6185],[-77.4081,38.6185],[-77.4012,38.6112],[-77.3988,38.611],[-77.3991,38.6078],[-77.3943,38.6051],[-77.3884,38.605],[-77.3872,38.603],[-77.3782,38.6047],[-77.3688,38.6025],[-77.3739,38.5969],[-77.3852,38.5962],[-77.3938,38.599],[-77.4048,38.5977],[-77.4266,38.6083],[-77.4331,38.6138],[-77.4377,38.6254],[-77.4402,38.6256],[-77.4401,38.6318],[-77.4544,38.6318],[-77.458,38.6384],[-77.4525,38.6419],[-77.4526,38.6443],[-77.4611,38.6468],[-77.4661,38.653],[-77.4568,38.653],[-77.459,38.6671],[-77.4544,38.6769],[-77.4568,38.6767],[-77.4629,38.6819],[-77.4628,38.6841],[-77.4669,38.6852],[-77.4738,38.6809],[-77.4885,38.6884],[-77.4937,38.6882],[-77.4944,38.692],[-77.4997,38.6927],[-77.5038,38.7019],[-77.5077,38.7034]]],"20136":[[[-77.6042,38.7608],[-77.6019,38.7674],[-77.5929,38.7702],[-77.5955,38.7747],[-77.5822,38.7841],[-77.5836,38.7846],[-77.5824,38.7864],[-77.5751,38.7825],[-77.57,38.7866],[-77.5683,38.7854],[-77.5699,38.7828],[-77.5663,38.7832],[-77.5659,38.7779],[-77.5606,38.7768],[-77.5553,38.7731],[-77.5602,38.7674],[-77.5527,38.7668],[-77.554,38.7627],[-77.5505,38.7602],[-77.5483,38.762],[-77.547,38.761],[-77.5472,38.7535],[-77.5498,38.7504],[-77.5542,38.75],[-77.5478,38.7482],[-77.5454,38.7446],[-77.542,38.7459],[-77.5361,38.7373],[-77.5329,38.7376],[-77.5313,38.7265],[-77.5261,38.7296],[-77.5248,38.7243],[-77.5215,38.723],[-77.5239,38.7176],[-77.5172,38.7154],[-77.5133,38.7162],[-77.5062,38.7061],[-77.5077,38.7034],[-77.5038,38.7019],[-77.4997,38.6927],[-77.4944,38.692],[-77.4937,38.6882],[-77.4913,38.6873],[-77.4932,38.6852],[-77.4893,38.6826],[-77.4875,38.677],[-77.4944,38.6759],[-77.497,38.6814],[-77.5006,38.6822],[-77.4993,38.6847],[-77.5015,38.6855],[-77.5006,38.6871],[-77.5111,38.6936],[-77.5163,38.6885],[-77.5191,38.6901],[-77.5175,38.6917],[-77.5224,38.6955],[-77.5203,38.6985],[-77.5277,38.7024],[-77.5369,38.703],[-77.545,38.7067],[-77.5502,38.7032],[-77.5566,38.708],[-77.5584,38.7122],[-77.5646,38.7123],[-77.5531,38.725],[-77.5673,38.7327],[-77.5527,38.7322],[-77.5498,38.7352],[-77.5536,38.7391],[-77.5575,38.7383],[-77.5594,38.7336],[-77.568,38.7327],[-77.5821,38.733],[-77.5969,38.7366],[-77.5901,38.7529],[-77.5811,38.7511],[-77.589,38.755],[-77.5982,38.7533],[-77.5987,38.7568],[-77.5963,38.7581],[-77.6042,38.7608]]],"20143":[[[-77.5849,38.838],[-77.5832,38.837],[-77.5831,38.8533],[-77.5778,38.8545],[-77.5727,38.8497],[-77.575,38.8403],[-77.5711,38.8364],[-77.571,38.834],[-77.5855,38.8355],[-77.5849,38.838]],[[-77.589,38.8656],[-77.5903,38.8882],[-77.582,38.8869],[-77.5789,38.8915],[-77.5729,38.8909],[-77.5639,38.8862],[-77.5557,38.8885],[-77.5522,38.8866],[-77.5499,38.8798],[-77.5515,38.8717],[-77.5492,38.8679],[-77.5528,38.8648],[-77.5482,38.863],[-77.5525,38.8563],[-77.5481,38.8543],[-77.5474,38.8528],[-77.5504,38.8488],[-77.5488,38.8466],[-77.5459,38.8466],[-77.5477,38.8484],[-77.5461,38.8492],[-77.5451,38.8477],[-77.5452,38.845],[-77.548,38.845],[-77.545,38.8436],[-77.5449,38.8398],[-77.5506,38.8386],[-77.5527,38.8354],[-77.5624,38.8372],[-77.5623,38.8352],[-77.5637,38.8341],[-77.5672,38.8335],[-77.5667,38.8316],[-77.5688,38.8279],[-77.5715,38.8269],[-77.5689,38.8279],[-77.5673,38.8335],[-77.5626,38.8351],[-77.5625,38.8372],[-77.5676,38.8411],[-77.5629,38.8401],[-77.5579,38.8433],[-77.5716,38.8475],[-77.5727,38.8497],[-77.5708,38.8541],[-77.5759,38.8558],[-77.5782,38.8648],[-77.589,38.8656]]],"20155":[[[-77.7034,38.8159],[-77.6997,38.8238],[-77.6785,38.8207],[-77.682,38.8097],[-77.6739,38.8085],[-77.6699,38.7993],[-77.6671,38.7979],[-77.6619,38.8022],[-77.6508,38.8052],[-77.6488,38.8052],[-77.6508,38.8008],[-77.6428,38.799],[-77.6447,38.8003],[-77.6416,38.8043],[-77.64,38.8038],[-77.6381,38.8081],[-77.6332,38.8052],[-77.6291,38.8087],[-77.6244,38.8206],[-77.6148,38.8154],[-77.6132,38.8187],[-77.6095,38.8182],[-77.6088,38.8277],[-77.6076,38.8309],[-77.6054,38.8313],[-77.6049,38.8516],[-77.6213,38.855],[-77.6211,38.8568],[-77.6228,38.8566],[-77.6218,38.8611],[-77.6196,38.866],[-77.6163,38.865],[-77.6139,38.8752],[-77.6066,38.8769],[-77.6055,38.8707],[-77.6033,38.8705],[-77.6015,38.8742],[-77.5981,38.873],[-77.5987,38.8789],[-77.5913,38.8809],[-77.589,38.8656],[-77.5782,38.8648],[-77.5759,38.8558],[-77.5708,38.8541],[-77.5727,38.8497],[-77.5716,38.8475],[-77.5579,38.8433],[-77.5629,38.8401],[-77.5676,38.8411],[-77.5625,38.8372],[-77.5626,38.8351],[-77.5673,38.8335],[-77.5689,38.8279],[-77.5715,38.827],[-77.5715,38.8269],[-77.5693,38.8276],[-77.5688,38.8279],[-77.5686,38.8284],[-77.5617,38.8219],[-77.5724,38.8208],[-77.5733,38.8062],[-77.5987,38.7996],[-77.5855,38.7978],[-77.5651,38.7914],[-77.5683,38.7854],[-77.5702,38.7867],[-77.5751,38.7825],[-77.5824,38.7864],[-77.5836,38.7846],[-77.5822,38.7841],[-77.5955,38.7747],[-77.5929,38.7702],[-77.6019,38.7674],[-77.6042,38.7608],[-77.6006,38.7595],[-77.6082,38.7606],[-77.6097,38.7543],[-77.6175,38.7578],[-77.6235,38.7651],[-77.625,38.7646],[-77.625,38.7677],[-77.6281,38.7692],[-77.633,38.7684],[-77.6389,38.7728],[-77.6608,38.7683],[-77.6577,38.7649],[-77.6566,38.7672],[-77.6518,38.767],[-77.6584,38.7542],[-77.6583,38.7518],[-77.653,38.7505],[-77.658,38.7458],[-77.6972,38.8046],[-77.6955,38.8083],[-77.7034,38.8159]]],"20169":[[[-77.7097,38.8432],[-77.7049,38.8432],[-77.7027,38.8478],[-77.6979,38.8752],[-77.6926,38.887],[-77.6848,38.891],[-77.6755,38.9092],[-77.6696,38.9297],[-77.6576,38.9432],[-77.6375,38.9417],[-77.6314,38.9349],[-77.6244,38.9313],[-77.6187,38.9313],[-77.6128,38.9241],[-77.609,38.9132],[-77.6032,38.9111],[-77.5982,38.9028],[-77.5913,38.899],[-77.5916,38.8967],[-77.5857,38.8952],[-77.5806,38.891],[-77.582,38.8869],[-77.5909,38.8877],[-77.5913,38.8809],[-77.5987,38.8789],[-77.5981,38.873],[-77.6015,38.8742],[-77.6033,38.8705],[-77.6055,38.8707],[-77.6066,38.8769],[-77.6139,38.8752],[-77.6163,38.865],[-77.6196,38.866],[-77.6228,38.8566],[-77.6187,38.8542],[-77.6049,38.8516],[-77.6054,38.8313],[-77.6076,38.8309],[-77.6088,38.8277],[-77.6095,38.8182],[-77.6132,38.8187],[-77.6148,38.8154],[-77.6244,38.8206],[-77.6291,38.8087],[-77.6332,38.8052],[-77.6381,38.8081],[-77.64,38.8038],[-77.6416,38.8043],[-77.6447,38.8003],[-77.6428,38.799],[-77.6508,38.8008],[-77.6488,38.8052],[-77.6619,38.8022],[-77.6671,38.7979],[-77.6699,38.7993],[-77.6753,38.8126],[-77.6737,38.8206],[-77.6754,38.8218],[-77.6718,38.8368],[-77.6756,38.841],[-77.682,38.8376],[-77.6869,38.8416],[-77.697,38.8441],[-77.7101,38.84],[-77.7097,38.8432]]],"20181":[[[-77.6968,38.7225],[-77.6794,38.739],[-77.6564,38.7463],[-77.653,38.7505],[-77.6583,38.7518],[-77.6584,38.7542],[-77.6518,38.767],[-77.6566,38.7672],[-77.6577,38.7649],[-77.6608,38.7683],[-77.6389,38.7728],[-77.633,38.7684],[-77.6281,38.7692],[-77.625,38.7677],[-77.625,38.7646],[-77.6235,38.7651],[-77.6142,38.7551],[-77.6089,38.7545],[-77.6082,38.7606],[-77.605,38.761],[-77.5963,38.7581],[-77.5987,38.7568],[-77.5982,38.7533],[-77.589,38.755],[-77.5811,38.7511],[-77.5901,38.7529],[-77.5969,38.7366],[-77.5821,38.733],[-77.568,38.7327],[-77.5594,38.7336],[-77.5575,38.7383],[-77.5536,38.7391],[-77.5498,38.7352],[-77.5527,38.7322],[-77.5673,38.7327],[-77.5531,38.725],[-77.5646,38.7123],[-77.5584,38.7122],[-77.5566,38.708],[-77.5502,38.7032],[-77.545,38.7067],[-77.5369,38.703],[-77.5277,38.7024],[-77.5203,38.6985],[-77.5224,38.6955],[-77.5175,38.6917],[-77.5191,38.6901],[-77.5163,38.6885],[-77.5111,38.6936],[-77.5039,38.6904],[-77.5006,38.6871],[-77.5015,38.6855],[-77.4993,38.6847],[-77.5006,38.6822],[-77.497,38.6814],[-77.4936,38.6756],[-77.4875,38.677],[-77.4893,38.6826],[-77.4932,38.6852],[-77.4885,38.6884],[-77.4738,38.6809],[-77.4669,38.6852],[-77.4628,38.6841],[-77.4629,38.6819],[-77.4568,38.6767],[-77.4544,38.6769],[-77.459,38.6671],[-77.4568,38.653],[-77.4661,38.653],[-77.4611,38.6468],[-77.4526,38.6443],[-77.4525,38.6419],[-77.458,38.6384],[-77.4544,38.6318],[-77.4401,38.6318],[-77.4402,38.6256],[-77.4374,38.6248],[-77.4465,38.6265],[-77.4478,38.613],[-77.4526,38.6101],[-77.4561,38.6045],[-77.466,38.6036],[-77.4626,38.5996],[-77.4613,38.5941],[-77.4463,38.5901],[-77.4565,38.5859],[-77.457,38.5803],[-77.4641,38.5787],[-77.4716,38.5895],[-77.4768,38.5923],[-77.4918,38.5906],[-77.4969,38.5865],[-77.4996,38.5803],[-77.5313,38.5566],[-77.5328,38.5572],[-77.5618,38.601],[-77.555,38.6079],[-77.5645,38.6126],[-77.5619,38.6142],[-77.5625,38.6183],[-77.5711,38.6198],[-77.573,38.627],[-77.5794,38.6276],[-77.6328,38.708],[-77.6385,38.7087],[-77.6423,38.7119],[-77.655,38.7091],[-77.6707,38.7115],[-77.6732,38.7099],[-77.6796,38.7119],[-77.6792,38.7145],[-77.6829,38.7159],[-77.6833,38.7139],[-77.6913,38.7163],[-77.6968,38.7225]]],"22025":[[[-77.4081,38.6185],[-77.4006,38.6185],[-77.3987,38.6205],[-77.3847,38.6109],[-77.3814,38.6126],[-77.3712,38.6116],[-77.3706,38.6144],[-77.3634,38.6095],[-77.362,38.6129],[-77.3634,38.6178],[-77.359,38.6187],[-77.3611,38.6271],[-77.3574,38.6264],[-77.3565,38.629],[-77.348,38.6289],[-77.3406,38.6193],[-77.334,38.6209],[-77.3352,38.6139],[-77.329,38.6117],[-77.3264,38.616],[-77.3215,38.6095],[-77.319,38.6094],[-77.3233,38.6031],[-77.3171,38.6033],[-77.3118,38.6083],[-77.308,38.6065],[-77.3131,38.6005],[-77.3227,38.58],[-77.3401,38.5645],[-77.3453,38.569],[-77.3433,38.5702],[-77.3479,38.5733],[-77.3642,38.5794],[-77.3739,38.5969],[-77.3693,38.6035],[-77.3782,38.6047],[-77.3872,38.603],[-77.3884,38.605],[-77.3943,38.6051],[-77.3991,38.6078],[-77.3988,38.611],[-77.4012,38.6112],[-77.4081,38.6185]]],"22026":[[[-77.3401,38.5579],[-77.3349,38.5682],[-77.3205,38.5831],[-77.3119,38.6024],[-77.3065,38.5986],[-77.3081,38.5941],[-77.3059,38.5953],[-77.3015,38.593],[-77.3059,38.5879],[-77.3004,38.582],[-77.3021,38.5801],[-77.2962,38.5753],[-77.289,38.5846],[-77.2842,38.5859],[-77.2776,38.5872],[-77.2722,38.5859],[-77.2714,38.5835],[-77.2642,38.5838],[-77.2653,38.5803],[-77.2608,38.5653],[-77.257,38.5612],[-77.2766,38.5471],[-77.2763,38.5396],[-77.2791,38.534],[-77.2831,38.533],[-77.286,38.5291],[-77.2879,38.5306],[-77.2853,38.5359],[-77.3011,38.5495],[-77.303,38.5533],[-77.3016,38.5552],[-77.3063,38.5608],[-77.3141,38.5592],[-77.3189,38.5632],[-77.3222,38.5602],[-77.3241,38.5616],[-77.3265,38.5586],[-77.3304,38.5608],[-77.3357,38.5557],[-77.3401,38.5579]]],"22125":[[[-77.2655,38.6827],[-77.2634,38.6864],[-77.2548,38.6812],[-77.2562,38.6802],[-77.2583,38.6819],[-77.2579,38.6793],[-77.2606,38.6775],[-77.2655,38.6827]]],"22134":[[[-77.5299,38.5576],[-77.4996,38.5803],[-77.4969,38.5865],[-77.4918,38.5906],[-77.4768,38.5923],[-77.4716,38.5895],[-77.4641,38.5787],[-77.4559,38.581],[-77.4476,38.5809],[-77.445,38.5758],[-77.4367,38.5728],[-77.4303,38.566],[-77.421,38.5637],[-77.4222,38.5614],[-77.4148,38.5562],[-77.4122,38.5566],[-77.4093,38.5535],[-77.4031,38.5517],[-77.4003,38.5496],[-77.4008,38.5476],[-77.3954,38.5459],[-77.3846,38.5611],[-77.373,38.5592],[-77.3666,38.5548],[-77.3565,38.5523],[-77.36,38.5303],[-77.3536,38.5357],[-77.3575,38.5241],[-77.3366,38.5459],[-77.3289,38.5422],[-77.3207,38.5313],[-77.3111,38.5305],[-77.3085,38.5347],[-77.3078,38.5413],[-77.3011,38.5495],[-77.2853,38.5359],[-77.2876,38.5293],[-77.2828,38.5263],[-77.2866,38.5194],[-77.2911,38.5157],[-77.2977,38.5148],[-77.2993,38.51],[-77.2964,38.5092],[-77.2963,38.5071],[-77.3103,38.4939],[-77.3156,38.4789],[-77.3402,38.4876],[-77.3529,38.4884],[-77.3612,38.4931],[-77.365,38.4983],[-77.3625,38.5162],[-77.3647,38.5166],[-77.3612,38.5202],[-77.3644,38.5209],[-77.3683,38.519],[-77.3711,38.5202],[-77.3823,38.4978],[-77.3921,38.4859],[-77.3957,38.4878],[-77.4143,38.4896],[-77.4154,38.4914],[-77.4208,38.4924],[-77.4202,38.4945],[-77.423,38.4956],[-77.4245,38.4952],[-77.4231,38.4929],[-77.425,38.4932],[-77.4253,38.4916],[-77.4319,38.4929],[-77.4354,38.4871],[-77.439,38.4884],[-77.4452,38.4861],[-77.4457,38.4938],[-77.4474,38.4928],[-77.4513,38.4977],[-77.4586,38.5006],[-77.4622,38.5062],[-77.4686,38.5076],[-77.464,38.5136],[-77.4772,38.5223],[-77.4908,38.5279],[-77.4922,38.5402],[-77.4992,38.5439],[-77.5133,38.5459],[-77.5299,38.5576]]],"22172":[[[-77.466,38.6036],[-77.4561,38.6045],[-77.4526,38.6101],[-77.4478,38.613],[-77.4465,38.6265],[-77.4374,38.6248],[-77.4331,38.6138],[-77.4266,38.6083],[-77.4048,38.5977],[-77.3938,38.599],[-77.3852,38.5962],[-77.3739,38.5969],[-77.3642,38.5794],[-77.3479,38.5733],[-77.3433,38.5702],[-77.3453,38.569],[-77.3401,38.5645],[-77.3349,38.5682],[-77.3401,38.5579],[-77.3357,38.5557],[-77.3304,38.5608],[-77.3265,38.5586],[-77.3241,38.5616],[-77.3222,38.5602],[-77.3189,38.5632],[-77.3141,38.5592],[-77.3063,38.5608],[-77.3016,38.5552],[-77.303,38.5533],[-77.3005,38.55],[-77.3078,38.5413],[-77.3085,38.5347],[-77.3111,38.5305],[-77.3207,38.5313],[-77.3289,38.5422],[-77.3366,38.5459],[-77.3575,38.5241],[-77.3536,38.5357],[-77.36,38.5303],[-77.3565,38.5523],[-77.3666,38.5548],[-77.373,38.5592],[-77.3846,38.5611],[-77.3954,38.5459],[-77.4008,38.5476],[-77.4003,38.5496],[-77.4031,38.5517],[-77.4093,38.5535],[-77.4122,38.5566],[-77.4148,38.5562],[-77.4222,38.5614],[-77.421,38.5637],[-77.4303,38.566],[-77.4367,38.5728],[-77.445,38.5758],[-77.4476,38.5809],[-77.457,38.5803],[-77.4565,38.5859],[-77.4463,38.5901],[-77.4613,38.5941],[-77.4626,38.5996],[-77.466,38.6036]]],"22191":[[[-77.3119,38.6024],[-77.2988,38.6158],[-77.286,38.6445],[-77.2801,38.6552],[-77.2768,38.6559],[-77.2794,38.6564],[-77.2724,38.666],[-77.2454,38.6721],[-77.2339,38.6613],[-77.2359,38.6601],[-77.2244,38.6483],[-77.2239,38.646],[-77.2283,38.6379],[-77.2342,38.6366],[-77.2406,38.6389],[-77.2467,38.6352],[-77.2489,38.6286],[-77.2451,38.6207],[-77.2497,38.6114],[-77.25,38.6061],[-77.2549,38.6033],[-77.2565,38.5991],[-77.2512,38.5935],[-77.2468,38.594],[-77.247,38.5906],[-77.2553,38.5869],[-77.2579,38.5834],[-77.2639,38.5851],[-77.2672,38.5826],[-77.2714,38.5835],[-77.2722,38.5859],[-77.2806,38.5867],[-77.289,38.5846],[-77.2962,38.5753],[-77.3021,38.5801],[-77.3004,38.582],[-77.3059,38.5879],[-77.3015,38.593],[-77.3059,38.5953],[-77.3081,38.5941],[-77.3065,38.5986],[-77.3119,38.6024]]],"22192":[[[-77.3876,38.6983],[-77.38,38.701],[-77.3786,38.6995],[-77.3787,38.7065],[-77.3743,38.7117],[-77.3687,38.7098],[-77.3628,38.7147],[-77.3627,38.7116],[-77.3616,38.7117],[-77.3623,38.7147],[-77.3635,38.7154],[-77.3614,38.7204],[-77.3559,38.7254],[-77.349,38.7212],[-77.3327,38.7184],[-77.3316,38.7113],[-77.3224,38.7125],[-77.3202,38.7108],[-77.3269,38.7041],[-77.3261,38.702],[-77.3135,38.7018],[-77.3086,38.7067],[-77.3028,38.7079],[-77.2988,38.7043],[-77.2742,38.6937],[-77.2634,38.6864],[-77.2655,38.6827],[-77.2606,38.6775],[-77.2579,38.6793],[-77.2583,38.6819],[-77.2562,38.6802],[-77.2548,38.6812],[-77.2504,38.6742],[-77.2454,38.6721],[-77.2724,38.666],[-77.2794,38.6564],[-77.2768,38.6559],[-77.2801,38.6552],[-77.286,38.6445],[-77.2928,38.6281],[-77.2988,38.6278],[-77.2964,38.632],[-77.3006,38.6339],[-77.2984,38.6383],[-77.3015,38.6441],[-77.3023,38.6511],[-77.3063,38.6488],[-77.3082,38.6507],[-77.3099,38.6499],[-77.3052,38.6529],[-77.3081,38.655],[-77.3168,38.6527],[-77.3328,38.6669],[-77.3364,38.673],[-77.3477,38.6776],[-77.348,38.6694],[-77.3579,38.6693],[-77.3533,38.6723],[-77.3573,38.6789],[-77.36,38.6813],[-77.3767,38.6865],[-77.3769,38.6928],[-77.3841,38.6945],[-77.3876,38.6983]]],"22193":[[[-77.4036,38.6398],[-77.3959,38.6446],[-77.401,38.6454],[-77.4008,38.6471],[-77.3937,38.6471],[-77.389,38.651],[-77.3846,38.646],[-77.3891,38.6511],[-77.3879,38.654],[-77.389,38.6529],[-77.391,38.6567],[-77.3961,38.6564],[-77.398,38.6597],[-77.3927,38.6614],[-77.3943,38.6655],[-77.3999,38.6649],[-77.4026,38.669],[-77.3951,38.6724],[-77.3833,38.6744],[-77.3838,38.6679],[-77.3704,38.6718],[-77.3713,38.6752],[-77.3599,38.6812],[-77.3533,38.6723],[-77.3579,38.6693],[-77.3564,38.6685],[-77.348,38.6694],[-77.3477,38.6776],[-77.3364,38.673],[-77.3328,38.6669],[-77.3168,38.6527],[-77.3081,38.655],[-77.3052,38.6529],[-77.3099,38.6499],[-77.3082,38.6507],[-77.3063,38.6488],[-77.3023,38.6511],[-77.3015,38.6441],[-77.2984,38.6383],[-77.3006,38.6339],[-77.2964,38.632],[-77.2988,38.6278],[-77.2928,38.6281],[-77.2988,38.6158],[-77.308,38.6065],[-77.3118,38.6083],[-77.3171,38.6033],[-77.3233,38.6031],[-77.319,38.6094],[-77.3215,38.6095],[-77.3264,38.616],[-77.329,38.6117],[-77.3352,38.6139],[-77.334,38.6209],[-77.3406,38.6193],[-77.348,38.6289],[-77.3565,38.629],[-77.3574,38.6264],[-77.3611,38.6271],[-77.359,38.6187],[-77.3634,38.6178],[-77.362,38.6129],[-77.3634,38.6095],[-77.3679,38.6113],[-77.3725,38.6177],[-77.3783,38.617],[-77.3858,38.622],[-77.3864,38.6247],[-77.3944,38.6287],[-77.3991,38.6366],[-77.4036,38.6398]]]},"summary":{"areas scored":17,"incidents behind the crime indicator":25770,"rank agreement with the original crime figure (spearman)":0.115,"ZIPs with a stable rank (<=3 places, any weighting)":2,"median rank swing across weightings":8,"rank spread from the two direction choices alone":5,"areas excluded from comparison (jurisdiction)":3},"labels":["Crime","Income","Education","Housing","Unemployment","Density"],"weights":[0.3,0.2,0.2,0.1,0.1,0.1]}</script>
+<script>
+(function () {
+  "use strict";
+  var D = JSON.parse(document.getElementById("payload").textContent);
+  var AREAS = D.areas, LABELS = D.labels, BASE = D.weights.slice();
+  var weights = BASE.slice();
+  var selected = null;
+  var MAP_FS = 9;          // user units; set by fitAll() from the rendered width
+  var MAP_TERSE = false;   // narrow screens get the score only, not ZIP + score
+
+  // Gate 48: nothing here invents a colour. Every value is read back out of the
+  // :root token block, so the CSS stays the single source of truth.
+  var CSS = getComputedStyle(document.documentElement);
+  function token(name) { return CSS.getPropertyValue(name).trim(); }
+  var T = {
+    ink: token("--ink"), ground: token("--ground"), accent: token("--accent"),
+    quiet: token("--quiet"), plate: token("--plate"),
+    grid: token("--chart-grid"), rule: token("--chart-rule"),
+    soft: token("--chart-soft")
+  };
+  function rgb(hex) {
+    return [1, 3, 5].map(function (i) { return parseInt(hex.substr(i, 2), 16); });
+  }
+  var ACCENT = rgb(T.accent), GROUND = rgb(T.ground);
+
+  /* ---- scoring ------------------------------------------------------- */
+  function normalised() {
+    var t = weights.reduce(function (a, b) { return a + b; }, 0);
+    if (t <= 0) return weights.map(function () { return 1 / 6; });
+    return weights.map(function (w) { return w / t; });
+  }
+  function ranked() {
+    var w = normalised();
+    var out = AREAS.map(function (a) {
+      var s = 0;
+      for (var i = 0; i < 6; i++) s += a.s[i] * w[i];
+      return { a: a, score: s * 100 };
+    });
+    out.sort(function (x, y) { return y.score - x.score; });
+    out.forEach(function (r, i) { r.rank = i + 1; });
+    return out;
+  }
+  function fill(score) {
+    // white -> accent. Vignelli allows exactly one accent, so the ramp is its tint scale.
+    var t = Math.max(0, Math.min(1, score / 100));
+    var e = Math.pow(t, 0.85);
+    return "rgb(" + [0, 1, 2].map(function (i) {
+      return Math.round(GROUND[i] + (ACCENT[i] - GROUND[i]) * e);
+    }).join(",") + ")";
+  }
+
+  /* ---- map ------------------------------------------------------------ */
+  var map = document.getElementById("map");
+  var VB = { w: 640, h: 720, pad: 14 };
+  var lo = [Infinity, Infinity], hi = [-Infinity, -Infinity];
+  Object.keys(D.shapes).forEach(function (z) {
+    D.shapes[z].forEach(function (ring) {
+      ring.forEach(function (p) {
+        if (p[0] < lo[0]) lo[0] = p[0];
+        if (p[1] < lo[1]) lo[1] = p[1];
+        if (p[0] > hi[0]) hi[0] = p[0];
+        if (p[1] > hi[1]) hi[1] = p[1];
+      });
+    });
+  });
+  // Equirectangular with a cos(lat) correction — at this latitude and extent the
+  // distortion against a proper projection is under a pixel.
+  var midLat = (lo[1] + hi[1]) / 2, kx = Math.cos(midLat * Math.PI / 180);
+  var spanX = (hi[0] - lo[0]) * kx, spanY = hi[1] - lo[1];
+  var s = Math.min((VB.w - VB.pad * 2) / spanX, (VB.h - VB.pad * 2) / spanY);
+  var offX = (VB.w - spanX * s) / 2, offY = (VB.h - spanY * s) / 2;
+  function px(p) { return [(p[0] - lo[0]) * kx * s + offX,
+                           (hi[1] - p[1]) * s + offY]; }
+
+  var NS = "http://www.w3.org/2000/svg";
+  var defs = document.createElementNS(NS, "defs");
+  defs.innerHTML =
+    '<pattern id="hatch" width="6" height="6" patternUnits="userSpaceOnUse" ' +
+    'patternTransform="rotate(45)"><line x1="0" y1="0" x2="0" y2="6" ' +
+    'stroke="' + T.ink + '" stroke-width="1.6"/></pattern>';
+  map.appendChild(defs);
+
+  var paths = {}, hatches = {}, labels = {};
+  AREAS.forEach(function (a) {
+    var d = (D.shapes[a.zip] || []).map(function (ring) {
+      return "M" + ring.map(function (p) {
+        var q = px(p); return q[0].toFixed(1) + " " + q[1].toFixed(1);
+      }).join("L") + "Z";
+    }).join(" ");
+
+    var path = document.createElementNS(NS, "path");
+    path.setAttribute("d", d);
+    path.setAttribute("class", "map__area");
+    path.setAttribute("tabindex", "0");
+    path.setAttribute("role", "button");
+    var title = document.createElementNS(NS, "title");
+    path.appendChild(title);
+    map.appendChild(path);
+    paths[a.zip] = { el: path, title: title };
+
+    if (a.flag) {
+      var h = document.createElementNS(NS, "path");
+      h.setAttribute("d", d);
+      h.setAttribute("fill", "url(#hatch)");
+      h.setAttribute("pointer-events", "none");
+      h.setAttribute("opacity", ".5");
+      hatches[a.zip] = h;
+    }
+
+    // Label at the largest ring's centroid.
+    var big = (D.shapes[a.zip] || []).slice().sort(function (r1, r2) {
+      return r2.length - r1.length; })[0] || [[0, 0]];
+    var cx = 0, cy = 0, x0 = Infinity, x1 = -Infinity, y0 = Infinity, y1 = -Infinity;
+    big.forEach(function (p) {
+      var q = px(p); cx += q[0]; cy += q[1];
+      if (q[0] < x0) x0 = q[0]; if (q[0] > x1) x1 = q[0];
+      if (q[1] < y0) y0 = q[1]; if (q[1] > y1) y1 = q[1];
+    });
+    cx /= big.length; cy /= big.length;
+    // Occoquan is a 917-person town and renders about 13 units across — smaller
+    // than its own label. Transit-map convention: push the label clear and run a
+    // leader back to the shape, rather than hiding either.
+    var tight = (x1 - x0) < 34 || (y1 - y0) < 26;
+    var leader = null, lx = cx, ly = cy;
+    if (tight) {
+      var dx = cx - VB.w / 2, dy = cy - VB.h / 2;
+      var m = Math.max(1, Math.sqrt(dx * dx + dy * dy));
+      lx = cx + dx / m * 46; ly = cy + dy / m * 46;
+      leader = document.createElementNS(NS, "line");
+      leader.setAttribute("x1", cx.toFixed(1)); leader.setAttribute("y1", cy.toFixed(1));
+      leader.setAttribute("x2", lx.toFixed(1)); leader.setAttribute("y2", ly.toFixed(1));
+      leader.setAttribute("stroke", T.ink);
+      leader.setAttribute("stroke-width", "1");
+      leader.setAttribute("pointer-events", "none");
+      map.appendChild(leader);
+      // and make the shape itself findable
+      path.setAttribute("stroke", T.ink);
+      path.setAttribute("stroke-width", "1.8");
+    }
+    var g = document.createElementNS(NS, "g");
+    g.setAttribute("pointer-events", "none");
+    var plate = document.createElementNS(NS, "rect");
+    plate.setAttribute("fill", T.plate);
+    plate.setAttribute("opacity", ".88");
+    plate.setAttribute("pointer-events", "none");
+    g.appendChild(plate);
+    if (tight) { plate.setAttribute("stroke", T.ink); plate.setAttribute("stroke-width", "1"); }
+
+    var t1 = document.createElementNS(NS, "text");
+    t1.setAttribute("class", "map__zip");
+    t1.setAttribute("x", lx.toFixed(1)); t1.setAttribute("y", ly.toFixed(1));
+    t1.setAttribute("text-anchor", "middle");
+    t1.textContent = a.zip;
+    var t2 = document.createElementNS(NS, "text");
+    t2.setAttribute("class", "map__zip");
+    t2.setAttribute("x", lx.toFixed(1)); t2.setAttribute("y", ly.toFixed(1));
+    t2.setAttribute("text-anchor", "middle");
+    g.appendChild(t1); g.appendChild(t2);
+    labels[a.zip] = { zip: t1, score: t2, plate: plate, cx: lx, baseY: ly };
+    map.appendChild(g);
+
+    function pick() {
+      selected = (selected === a.zip) ? null : a.zip;
+      render();
+    }
+    path.addEventListener("click", pick);
+    path.addEventListener("keydown", function (e) {
+      if (e.key === "Enter" || e.key === " ") { e.preventDefault(); pick(); }
+    });
+  });
+  Object.keys(hatches).forEach(function (z) { map.appendChild(hatches[z]); });
+  // Labels must sit above the hatch layer.
+  AREAS.forEach(function (a) {
+    map.appendChild(labels[a.zip].zip.parentNode);
+  });
+
+  var ramp = document.getElementById("ramp");
+  for (var i = 0; i <= 10; i++) {
+    var b = document.createElement("i");
+    b.style.background = fill(i * 10);
+    ramp.appendChild(b);
+  }
+
+  /* ---- sliders --------------------------------------------------------- */
+  var wrap = document.getElementById("weights");
+  LABELS.forEach(function (lab, i) {
+    var row = document.createElement("div");
+    row.className = "w";
+    var id = "w" + i;
+    row.innerHTML =
+      '<label class="w__label" for="' + id + '">' + lab + '</label>' +
+      '<output class="w__val" id="o' + id + '" for="' + id + '"></output>' +
+      '<input type="range" id="' + id + '" min="0" max="60" step="1">';
+    wrap.appendChild(row);
+    var input = row.querySelector("input");
+    input.value = Math.round(BASE[i] * 100);
+    input.addEventListener("input", function () {
+      weights[i] = Number(input.value) / 100;
+      render();
+    });
+  });
+
+  function setWeights(next) {
+    weights = next.slice();
+    LABELS.forEach(function (_, i) {
+      document.getElementById("w" + i).value = Math.round(weights[i] * 100);
+    });
+    render();
+  }
+  document.getElementById("reset").addEventListener("click", function () {
+    setWeights(BASE);
+  });
+  document.getElementById("equal").addEventListener("click", function () {
+    setWeights([1 / 6, 1 / 6, 1 / 6, 1 / 6, 1 / 6, 1 / 6]);
+  });
+  document.getElementById("crimeOnly").addEventListener("click", function () {
+    setWeights([0.6, 0, 0, 0, 0, 0]);
+  });
+
+  /* ---- render ---------------------------------------------------------- */
+  var tbody = document.querySelector("#rankTable tbody");
+  function render() {
+    var rows = ranked();
+    var w = normalised();
+
+    LABELS.forEach(function (_, i) {
+      document.getElementById("ow" + i).textContent = Math.round(w[i] * 100) + "%";
+    });
+
+    var moved = 0;
+    tbody.textContent = "";
+    rows.forEach(function (r) {
+      var a = r.a;
+      var delta = a.baseRank - r.rank;
+      if (delta !== 0) moved++;
+
+      var p = paths[a.zip];
+      p.el.setAttribute("fill", fill(r.score));
+      p.el.classList.toggle("is-sel", selected === a.zip);
+      p.title.textContent = a.zip + (a.name ? " " + a.name : "") +
+        " — rank " + r.rank + ", score " + r.score.toFixed(1) +
+        (a.flag ? " (crime figure not comparable)" : "");
+      p.el.setAttribute("aria-label", p.title.textContent);
+
+      // A knockout plate rather than switching the label between black and white:
+      // mid-ramp fills clear 4.5:1 against neither, and 9px bold is small text.
+      var L = labels[a.zip];
+      L.zip.setAttribute("font-size", MAP_FS.toFixed(1));
+      L.score.setAttribute("font-size", MAP_FS.toFixed(1));
+      L.zip.setAttribute("fill", T.ink);
+      L.score.setAttribute("fill", T.ink);
+      // On a phone there is not enough polygon to carry two lines, so the ZIP
+      // drops out and the table alongside carries the identity.
+      L.zip.textContent = MAP_TERSE ? "" : a.zip;
+      L.score.textContent = r.score.toFixed(0);
+      L.score.setAttribute("y", (L.baseY + (MAP_TERSE ? MAP_FS * 0.35 : MAP_FS * 1.2))
+                                  .toFixed(1));
+      var lines = MAP_TERSE ? 1 : 2;
+      var pw = MAP_FS * (MAP_TERSE ? 2.1 : 3.1), ph = MAP_FS * (lines === 1 ? 1.2 : 2.3);
+      L.plate.setAttribute("x", (L.cx - pw / 2).toFixed(1));
+      L.plate.setAttribute("y", (L.baseY - MAP_FS * 0.9).toFixed(1));
+      L.plate.setAttribute("width", pw.toFixed(1));
+      L.plate.setAttribute("height", ph.toFixed(1));
+
+      var tr = document.createElement("tr");
+      var move = delta === 0 ? "·" : (delta > 0 ? "▲" + delta : "▼" + Math.abs(delta));
+      tr.innerHTML =
+        "<td>" + r.rank + "</td>" +
+        '<td><span class="rank__zip">' + a.zip +
+          (a.flag ? ' <span class="rank__flagmark" title="crime figure not comparable">▨</span>' : "") +
+          '</span><span class="rank__name">' + (a.name || "") + "</span></td>" +
+        "<td>" + r.score.toFixed(1) + "</td>" +
+        '<td class="rank__move">' + move + "</td>";
+      if (selected === a.zip) tr.style.background = "var(--band)";
+      tr.addEventListener("click", function () {
+        selected = (selected === a.zip) ? null : a.zip; render();
+      });
+      tbody.appendChild(tr);
+    });
+
+    document.getElementById("moved").textContent = moved;
+    document.getElementById("movedLabel").textContent = moved === 0
+      ? "areas change rank — this is the project's own weighting."
+      : "of 17 areas sit at a different rank than the project's own weighting gives them.";
+  }
+
+  /* ---- band 01: rank ranges -------------------------------------------- */
+  function drawRange(fs) {
+    var svg = document.getElementById("rangeChart");
+    var W = 660, H = 420, L = 62, R = 18, T = 26, B = 34;
+    var f1 = fs.toFixed(1), f2 = (fs * 1.05).toFixed(1);
+    var order = AREAS.slice().sort(function (a, b) { return a.rMed - b.rMed; });
+    var step = (H - T - B) / order.length;
+    var x = function (rank) { return L + (rank - 1) / 16 * (W - L - R); };
+
+    var out = [];
+    for (var g = 1; g <= 17; g += 4) {
+      out.push('<line x1="' + x(g).toFixed(1) + '" y1="' + T + '" x2="' + x(g).toFixed(1) +
+        '" y2="' + (H - B) + '" stroke="' + T.rule + '" stroke-width="1"/>');
+      out.push('<text x="' + x(g).toFixed(1) + '" y="' + (H - B + fs * 1.6).toFixed(1) +
+        '" text-anchor="middle" font-size="' + f1 + '" fill="' + T.quiet + '">' + g + "</text>");
+    }
+    order.forEach(function (a, i) {
+      var y = T + step * i + step / 2;
+      var stable = (a.r95 - a.r5) <= 3;
+      out.push('<text x="' + (L - 8) + '" y="' + (y + fs * 0.35).toFixed(1) +
+        '" text-anchor="end" font-size="' + f2 + '" font-weight="700">' + a.zip + "</text>");
+      out.push('<line x1="' + x(a.r5).toFixed(1) + '" y1="' + y.toFixed(1) +
+        '" x2="' + x(a.r95).toFixed(1) + '" y2="' + y.toFixed(1) +
+        '" stroke="' + (stable ? T.accent : T.soft) + '" stroke-width="7"/>');
+      out.push('<rect x="' + (x(a.baseRank) - 3.5).toFixed(1) + '" y="' + (y - 3.5).toFixed(1) +
+        '" width="7" height="7" fill="' + T.ink + '"/>');
+    });
+    out.push('<text x="' + L + '" y="' + (fs * 1.4).toFixed(1) +
+      '" font-size="' + f1 + '" fill="' + T.quiet + '">rank across 10,000 weightings — 1 is most' +
+      ' livable · dark bar: moves 3 places or less</text>');
+    svg.innerHTML = out.join("");
+  }
+
+  /* ---- band 02: crime scatter ------------------------------------------ */
+  function drawCrime(fs) {
+    var svg = document.getElementById("crimeChart");
+    var W = 520, H = 460, L = 52, R = 16, T = 22, B = 46;
+    var f1 = fs.toFixed(1);
+    var max = 0;
+    AREAS.forEach(function (a) { max = Math.max(max, a.cr, a.crOrig); });
+    max = Math.ceil(max / 20) * 20;
+    var x = function (v) { return L + v / max * (W - L - R); };
+    var y = function (v) { return H - B - v / max * (H - T - B); };
+
+    var out = [];
+    for (var g = 0; g <= max; g += 20) {
+      out.push('<line x1="' + x(g).toFixed(1) + '" y1="' + T + '" x2="' + x(g).toFixed(1) +
+        '" y2="' + (H - B) + '" stroke="' + T.grid + '"/>');
+      out.push('<line x1="' + L + '" y1="' + y(g).toFixed(1) + '" x2="' + (W - R) +
+        '" y2="' + y(g).toFixed(1) + '" stroke="' + T.grid + '"/>');
+      out.push('<text x="' + x(g).toFixed(1) + '" y="' + (H - B + fs * 1.5).toFixed(1) +
+        '" text-anchor="middle" font-size="' + f1 + '" fill="' + T.quiet + '">' + g + "</text>");
+      out.push('<text x="' + (L - 8) + '" y="' + (y(g) + fs * 0.35).toFixed(1) +
+        '" text-anchor="end" font-size="' + f1 + '" fill="' + T.quiet + '">' + g + "</text>");
+    }
+    out.push('<line x1="' + x(0) + '" y1="' + y(0) + '" x2="' + x(max) + '" y2="' + y(max) +
+      '" stroke="' + T.ink + '" stroke-dasharray="4 4" stroke-width="1"/>');
+    out.push('<text x="' + x(max * 0.62).toFixed(1) + '" y="' + (y(max * 0.62) - 7).toFixed(1) +
+      '" font-size="' + f1 + '" fill="' + T.quiet + '" transform="rotate(-33 ' +
+      x(max * 0.62).toFixed(1) + " " + (y(max * 0.62) - 7).toFixed(1) + ')">if the two agreed</text>');
+
+    AREAS.forEach(function (a) {
+      out.push('<circle cx="' + x(a.crOrig).toFixed(1) + '" cy="' + y(a.cr).toFixed(1) +
+        '" r="6" fill="' + (a.flag ? "url(#hatch2)" : T.accent) +
+        '" stroke="' + T.ink + '" stroke-width="' + (a.flag ? 1.4 : 0) + '"/>');
+      out.push('<text x="' + (x(a.crOrig) + fs * 0.9).toFixed(1) + '" y="' +
+        (y(a.cr) + fs * 0.35).toFixed(1) + '" font-size="' + f1 +
+        '" fill="' + T.quiet + '">' + a.zip + "</text>");
+    });
+    out.push('<text x="' + L + '" y="' + (fs * 1.2).toFixed(1) +
+      '" font-size="' + f1 + '" fill="' + T.quiet + '">vertical: rebuilt from 25,829 incidents' +
+      ' (/1,000)</text>');
+    out.push('<text x="' + (W / 2) + '" y="' + (H - fs * 0.8).toFixed(1) +
+      '" text-anchor="middle" font-size="' + f1 + '" fill="' + T.quiet + '">' +
+      'original Crime Rate (/1,000) — provenance unrecorded</text>');
+
+    svg.innerHTML =
+      '<defs><pattern id="hatch2" width="5" height="5" patternUnits="userSpaceOnUse" ' +
+      'patternTransform="rotate(45)"><rect width="5" height="5" fill="' + T.ground + '"/>' +
+      '<line x1="0" y1="0" x2="0" y2="5" stroke="' + T.ink + '" stroke-width="1.6"/></pattern></defs>' +
+      out.join("");
+  }
+
+  /* ---- keep SVG type at a constant rendered size ------------------------ */
+  function fitAll() {
+    // A font-size in user units renders at size * cssWidth / viewBoxWidth. Solve
+    // for the user-unit size that lands on the CSS px we actually want.
+    function units(id, vbW, cssTarget) {
+      var el = document.getElementById(id);
+      var w = el.getBoundingClientRect().width || vbW;
+      return Math.max(6, Math.min(30, cssTarget * vbW / w));
+    }
+    var mapW = document.getElementById("map").getBoundingClientRect().width;
+    MAP_FS = units("map", 640, 9);
+    MAP_TERSE = mapW < 520;      // no room for two lines of label
+    drawRange(units("rangeChart", 660, 11));
+    drawCrime(units("crimeChart", 520, 11));
+    render();
+  }
+
+  var resizeTimer;
+  window.addEventListener("resize", function () {
+    clearTimeout(resizeTimer);
+    resizeTimer = setTimeout(fitAll, 150);
+  });
+
+  fitAll();
+})();
+</script>
+</body>
+</html>

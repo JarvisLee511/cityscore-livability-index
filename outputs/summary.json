@@ -1,0 +1,9 @@
+{
+  "areas scored": 17,
+  "incidents behind the crime indicator": 25770,
+  "rank agreement with the original crime figure (spearman)": 0.115,
+  "ZIPs with a stable rank (<=3 places, any weighting)": 2,
+  "median rank swing across weightings": 8,
+  "rank spread from the two direction choices alone": 5,
+  "areas excluded from comparison (jurisdiction)": 3
+}
