@@ -4,8 +4,8 @@
 > built from six indicators — and a measurement of how much the resulting ranking
 > depends on the two choices that produced it.
 
-**🌐 [Interactive report](docs/index.html)** — move the six weights and watch the ranking
-come apart. Self-contained single page; deploys from `docs/`.
+**🌐 Live: <https://jarvislee511.github.io/cityscore-livability-index/>** — move the six
+weights and watch the ranking come apart. Self-contained single page, built from `docs/`.
 
 `Python` · `pandas` · `GeoPandas` · `matplotlib` · composite indexing · geospatial · sensitivity analysis
 
